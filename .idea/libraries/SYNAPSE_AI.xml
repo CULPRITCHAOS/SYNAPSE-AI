@@ -1,0 +1,9 @@
+<component name="libraryTable">
+  <library name="SYNAPSE-AI">
+    <CLASSES>
+      <root url="jar://$PROJECT_DIR$/SYNAPSE-AI.zip!/" />
+    </CLASSES>
+    <JAVADOC />
+    <SOURCES />
+  </library>
+</component>
