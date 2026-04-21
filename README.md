@@ -662,6 +662,28 @@ That is the fastest way to prove whether Synapse is a real platform or just a co
 
 ---
 
+## Current Project Status (Scaffolded)
+
+The project has been initialized with a robust, contract-first multi-module architecture.
+
+### 🏗️ Architecture Stack
+- **Build Logic**: Centralized convention plugins (`synapse.kotlin.library`, `synapse.android.library`, `synapse.android.compose`, `synapse.android.hilt`).
+- **Core APIs**: Model-agnostic contracts (`core:model-api`), App Capability contracts (`core:apppack-api`), and Execution contracts (`core:tool-api`).
+- **Reasoning**: `feature:orchestrator` implements a ReAct reasoning loop with real-time "Thought Trace" event streaming.
+- **Local Intelligence**: `core:model-gemma` utilizes MediaPipe LLM Inference for on-device execution.
+- **Agency**: `core:tool-system` provides physical device control (initial tool: Flashlight).
+
+### 🚀 Getting Started (S26 Ultra / S24 Ultra Target)
+
+1. **Sync Project**: Open in Android Studio and sync Gradle.
+2. **Download Model**: 
+   - Get `gemma-2b-it-cpu-int4.bin` (or similar MediaPipe-compatible Gemma weights).
+   - Push to device: `adb push gemma.bin /data/local/tmp/gemma.bin`.
+3. **Configure Path**: Update `GemmaModelProvider` or DI graph with the model path.
+4. **Run**: Deploy `:app:mobile-host` to your device.
+
+---
+
 ## Governing Principle
 
 > **Models are replaceable. Tools, app contracts, perception, orchestration, and safety are the product.**
