@@ -1,9 +1,9 @@
 package com.synapse.app.di
 
-import com.synapse.core.common.DefaultDispatcherProvider
-import com.synapse.core.common.DispatcherProvider
-import com.synapse.core.model.ModelProvider
-import com.synapse.core.model.gemma.GemmaModelProvider
+import com.synapse.core.model.registry.InMemoryModelRegistry
+import com.synapse.core.model.registry.ModelRegistry
+import com.synapse.core.model.router.DefaultModelRouter
+import com.synapse.core.model.router.ModelRouter
 import com.synapse.core.tool.ToolExecutor
 import com.synapse.core.tool.ToolRegistry
 import com.synapse.core.tool.system.FlashlightToolExecutor
@@ -29,20 +29,31 @@ abstract class AppModule {
 
     @Binds
     @Singleton
-    abstract fun bindModelProvider(
-        impl: GemmaModelProvider
-    ): ModelProvider
-
-    @Binds
-    @Singleton
     abstract fun bindOrchestrator(
         impl: DefaultOrchestrator
     ): Orchestrator
+
+    @Binds
+    @Singleton
+    abstract fun bindModelRouter(
+        impl: DefaultModelRouter
+    ): ModelRouter
 
     companion object {
         @Provides
         @Singleton
         fun provideDispatcherProvider(): DefaultDispatcherProvider = DefaultDispatcherProvider()
+
+        @Provides
+        @Singleton
+        fun provideModelRegistry(
+            gemmaProvider: GemmaModelProvider
+        ): ModelRegistry {
+            val registry = InMemoryModelRegistry()
+            registry.registerProvider(gemmaProvider)
+            // Future: register a SMALL_FAST provider here
+            return registry
+        }
 
         @Provides
         @Singleton

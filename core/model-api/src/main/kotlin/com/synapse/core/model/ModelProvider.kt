@@ -3,12 +3,19 @@ package com.synapse.core.model
 import com.synapse.core.common.SynapseResult
 import kotlinx.serialization.Serializable
 
+@Serializable
+public enum class ModelTier {
+    SMALL_FAST,
+    LARGE_REASONING
+}
+
 /**
  * Canonical runtime contract for any AI model backend in Synapse.
  */
 public interface ModelProvider {
     public val providerId: String
     public val modelId: String
+    public val tier: ModelTier
     public val capabilities: ProviderCapabilities
 
     /**

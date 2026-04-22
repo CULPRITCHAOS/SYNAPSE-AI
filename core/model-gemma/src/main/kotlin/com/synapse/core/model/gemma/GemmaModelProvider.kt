@@ -2,17 +2,18 @@ package com.synapse.core.model.gemma
 
 import android.content.Context
 import com.google.mediapipe.tasks.genai.llminference.LlmInference
-import com.synapse.core.common.SynapseError
-import com.synapse.core.common.SynapseResult
-import com.synapse.core.model.GenerateRequest
-import com.synapse.core.model.GenerateResult
+import com.synapse.core.model.ModelTier
 import com.synapse.core.model.ModelProvider
 import com.synapse.core.model.ProviderCapabilities
+import com.synapse.core.model.SynapseResult
+import com.synapse.core.model.GenerateRequest
+import com.synapse.core.model.GenerateResult
+import com.synapse.core.common.SynapseError
+import com.synapse.core.common.DispatcherProvider
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.withContext
 import java.io.File
 import javax.inject.Inject
-import com.synapse.core.common.DispatcherProvider
 
 /**
  * Implementation of [ModelProvider] using Google's MediaPipe LLM Inference (Gemma).
@@ -25,6 +26,7 @@ public class GemmaModelProvider @Inject constructor(
 
     override val providerId: String = "google-mediapipe"
     override val modelId: String = "gemma-2b-it" // Initial target
+    override val tier: ModelTier = ModelTier.LARGE_REASONING
     
     override val capabilities: ProviderCapabilities = ProviderCapabilities(
         onDevice = true,
@@ -35,19 +37,33 @@ public class GemmaModelProvider @Inject constructor(
 
     private var llmInference: LlmInference? = null
 
-    /**
-     * Initializes the model. 
-     * Note: In a real app, this should be managed by a lifecycle-aware repository.
-     */
-    private fun initializeInference(modelPath: String) {
-        if (llmInference == null) {
-            val options = LlmInference.LlmInferenceOptions.builder()
-                .setModelPath(modelPath)
-                .setTemperature(0.7f)
-                .setMaxTokens(1024)
-                .build()
-            llmInference = LlmInference.createFromOptions(context, options)
+    override suspend fun load(config: Map<String, String>): SynapseResult<Unit> =
+        withContext(dispatcherProvider.io) {
+            try {
+                val modelPath = config["model_path"] ?: return@withContext SynapseResult.failure(
+                    SynapseError.ModelError("model_path missing in config", "CONFIG_ERROR")
+                )
+
+                if (llmInference == null) {
+                    val options = LlmInference.LlmInferenceOptions.builder()
+                        .setModelPath(modelPath)
+                        .setTemperature(0.7f)
+                        .setMaxTokens(1024)
+                        .build()
+                    llmInference = LlmInference.createFromOptions(context, options)
+                }
+                SynapseResult.success(Unit)
+            } catch (e: Exception) {
+                SynapseResult.failure(
+                    SynapseError.ModelError(e.message ?: "Failed to load Gemma", "LOAD_ERROR", e)
+                )
+            }
         }
+
+    override suspend fun unload(): SynapseResult<Unit> {
+        llmInference?.close()
+        llmInference = null
+        return SynapseResult.success(Unit)
     }
 
     override suspend fun generate(request: GenerateRequest): SynapseResult<GenerateResult> = 

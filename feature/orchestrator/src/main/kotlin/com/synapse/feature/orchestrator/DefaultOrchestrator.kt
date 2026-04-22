@@ -11,17 +11,25 @@ import com.synapse.core.model.MessageRole
 import com.synapse.core.model.ModelProvider
 import com.synapse.core.model.TaskProfile
 import com.synapse.core.tool.ToolRegistry
+import com.synapse.core.model.RequestedToolCall
+import com.synapse.core.model.registry.ModelRegistry
+import com.synapse.core.model.router.ModelRouter
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import javax.inject.Inject
+import com.synapse.core.apppack.ToolDefinition
+import com.synapse.core.model.SynapseResult
+import com.synapse.core.model.GenerateResult
+import kotlinx.serialization.json.Json
 
 /**
  * Production implementation of the Orchestrator.
  * Implements the "Reasoning Loop" (ReAct pattern).
  */
 public class DefaultOrchestrator @Inject constructor(
-    private val modelProvider: ModelProvider,
+    private val modelRouter: ModelRouter,
+    private val modelRegistry: ModelRegistry,
     private val toolRegistry: ToolRegistry,
     private val dispatcherProvider: DispatcherProvider
 ) : Orchestrator {
@@ -43,42 +51,75 @@ public class DefaultOrchestrator @Inject constructor(
 
         while (!isFinished && loopCount < maxLoops) {
             loopCount++
+
+            // 1. Determine which tier we need for this step
+            val currentTask = if (loopCount == 1) TaskProfile.COMMAND_ROUTING else TaskProfile.PLANNING
+            val tier = modelRouter.route(currentTask)
             
+            // 2. Get the best model for that tier
+            val modelProvider = modelRegistry.getBestProviderFor(tier)
+                ?: throw IllegalStateException("No model provider found for tier $tier")
+
             val generateRequest = GenerateRequest(
-                taskProfile = TaskProfile.COMMAND_ROUTING,
+                taskProfile = currentTask,
                 messages = history
             )
 
-            emit(OrchestrationEvent.Thought(sessionId, "Consulting model (${modelProvider.modelId})..."))
+            emit(OrchestrationEvent.Thought(sessionId, "Consulting ${tier.name} model (${modelProvider.modelId})..."))
 
             when (val result = modelProvider.generate(generateRequest)) {
                 is SynapseResult.Success -> {
                     when (val data = result.data) {
                         is GenerateResult.Success -> {
-                            emit(OrchestrationEvent.ResponseChunk(sessionId, data.text))
-                            history.add(ChatMessage(MessageRole.ASSISTANT, data.text))
-                            isFinished = true
+                            val text = data.text
+                            // Logic: If the text contains tool call syntax, parse it.
+                            // We use a simple ReAct style: THOUGHT: ... CALL: {json}
+                            if (text.contains("CALL:")) {
+                                try {
+                                    val callJson = text.substringAfter("CALL:").trim()
+                                    val call = Json.decodeFromString<RequestedToolCall>(callJson)
+                                    
+                                    emit(OrchestrationEvent.ToolCallStarted(sessionId, call.toolName, call.argumentsJson))
+                                    
+                                    val toolDefinition = ToolDefinition(call.toolName, "", emptyList())
+                                    val executor = toolRegistry.getExecutorFor(toolDefinition)
+                                    
+                                    val toolResult = if (executor != null) {
+                                        executor.execute(call.argumentsJson).toString()
+                                    } else {
+                                        "Error: Tool ${call.toolName} not found"
+                                    }
+
+                                    emit(OrchestrationEvent.ToolCallFinished(sessionId, call.toolName, toolResult))
+                                    
+                                    history.add(ChatMessage(MessageRole.ASSISTANT, text))
+                                    history.add(ChatMessage(MessageRole.TOOL, toolResult, call.toolName))
+                                } catch (e: Exception) {
+                                    emit(OrchestrationEvent.Error(sessionId, "Failed to parse tool call: ${e.message}"))
+                                    isFinished = true
+                                }
+                            } else {
+                                emit(OrchestrationEvent.ResponseChunk(sessionId, text))
+                                history.add(ChatMessage(MessageRole.ASSISTANT, text))
+                                isFinished = true
+                            }
                         }
                         is GenerateResult.ToolCalls -> {
-                            history.add(ChatMessage(MessageRole.ASSISTANT, "Calling tools..."))
-                            
+                            // Native tool calling (if supported by provider)
                             for (call in data.calls) {
                                 emit(OrchestrationEvent.ToolCallStarted(sessionId, call.toolName, call.argumentsJson))
                                 
-                                // 1. Find the tool definition (mocked for now, will come from AppPackRegistry)
-                                // 2. Find executor
-                                // 3. Execute
-                                // For now, we emit a thought about the limitation
-                                emit(OrchestrationEvent.Thought(sessionId, "Tool execution logic is being initialized..."))
+                                val toolDefinition = ToolDefinition(call.toolName, "", emptyList())
+                                val executor = toolRegistry.getExecutorFor(toolDefinition)
                                 
-                                // Placeholder for tool result
-                                val toolResult = "Tool result placeholder for ${call.toolName}"
+                                val toolResult = executor?.execute(call.argumentsJson)?.toString() ?: "Error: Tool not found"
+                                
                                 emit(OrchestrationEvent.ToolCallFinished(sessionId, call.toolName, toolResult))
                                 
                                 history.add(ChatMessage(
                                     role = MessageRole.TOOL,
                                     content = toolResult,
-                                    toolCallId = call.toolName // Using name as ID for V0
+                                    toolCallId = call.toolName
                                 ))
                             }
                         }
@@ -101,9 +142,16 @@ public class DefaultOrchestrator @Inject constructor(
     private fun createSystemPrompt(): String {
         return """
             You are Synapse, a local-first Android AI agent.
-            You have access to device tools and connected app packs.
-            Always be concise and helpful.
-            If you need to use a tool, call it explicitly.
+            You have access to device tools. 
+            
+            To use a tool, respond exactly with:
+            THOUGHT: <your reasoning>
+            CALL: {"toolName": "flashlight", "argumentsJson": "{\"action\":\"on\"}"}
+            
+            Current tools:
+            - flashlight: Arguments: {"action": "on" | "off"}
+            
+            If you have the answer, respond normally.
         """.trimIndent()
     }
 }

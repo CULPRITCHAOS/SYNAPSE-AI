@@ -23,6 +23,8 @@ dependencyResolutionManagement {
 rootProject.name = "SYNAPSE-AI"
 include(":core:common")
 include(":core:model-api")
+include(":core:model-router")
+include(":core:model-registry")
 include(":core:apppack-api")
 include(":core:tool-api")
 include(":feature:orchestrator")
