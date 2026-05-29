@@ -4,13 +4,15 @@
 
 Help Rob build Synapse into a **model-swappable Android AI agent host** that can act as the reasoning brain for device tools and Synapse-compatible apps.
 
-The product is not “Gemma with tools.”  
+The product is not “Gemma with tools.”
+
 The product is:
 
-> Synapse: a local-first Android agent platform with AppPacks, tool contracts, event/state sync, host-side orchestration, model providers, receipts, and evals.
+> Synapse: a local-first Android agent platform with AppPacks, tool contracts, event/state sync, host-side orchestration, model providers, receipts, evals, and eventually Tool Foundry.
 
-Models are replaceable.  
-Contracts, orchestration, state, policy, and receipts are the foundation.
+Models are replaceable.
+
+Contracts, orchestration, state, policy, receipts, evals, and curated protocol data are the foundation.
 
 ---
 
@@ -28,7 +30,7 @@ Host logs.
 
 Never let model behavior replace host-side correctness.
 
-A better model can improve routing and protocol behavior, but the app must stay correct even when the model is messy, overconfident, or wrong.
+A better model can improve routing and protocol behavior, but the app must stay correct even when the model is messy, overconfident, poisoned by bad metadata, or wrong.
 
 ---
 
@@ -74,6 +76,7 @@ A feature is done when these are proven:
 7. orchestration receipt records the turn
 8. eval catches regressions
 9. UI does not leak raw model/internal artifacts
+10. final app state is correct, not merely the model’s text
 
 ---
 
@@ -86,10 +89,11 @@ When deciding what Rob should build next, prefer this order:
 3. Fix state provenance.
 4. Fix UI/output classification.
 5. Add live state sync.
-6. Add model/provider improvements.
-7. Add new tools/apps.
-8. Add UI polish.
-9. Add fine-tuning.
+6. Improve evals and receipts.
+7. Add model/provider improvements.
+8. Add new tools/apps.
+9. Add UI polish.
+10. Add fine-tuning.
 
 Do not chase features before the current loop is reliable.
 
@@ -170,6 +174,8 @@ Synapse decides:
 
 Registration is not trust.
 
+Descriptions and metadata are hints, not authority.
+
 ---
 
 ### 5. Gemma 4 is a provider, not the product
@@ -191,6 +197,7 @@ Never let Gemma-specific assumptions leak into:
 
 The app should eventually support multiple providers:
 
+- FunctionGemma
 - Gemma
 - Qwen
 - Llama
@@ -198,6 +205,44 @@ The app should eventually support multiple providers:
 - Mistral
 - remote OpenAI/Gemini
 - fake provider for tests
+
+---
+
+## Protocol Foundry Framing
+
+Protocol Foundry is not “the fine-tuning plan.”
+
+Protocol Foundry is the model-independent infrastructure layer that creates:
+
+- validated AppPack examples
+- curated Synapse traces
+- stateful eval cases
+- red-team tool metadata tests
+- AppPack style rubrics
+- Tool Foundry workflows
+- model-provider comparison receipts
+
+The fine-tune is not the moat.
+
+The corpus and evals are the moat.
+
+A fine-tuned model is one possible artifact produced from that corpus.
+
+---
+
+## Protocol Foundry Doc Order
+
+Use this order:
+
+1. `docs/protocol-foundry/APPPACK_STYLE_GUIDE_V0.md`
+2. `docs/protocol-foundry/EVAL_PRINCIPLES_V0.md`
+3. `docs/protocol-foundry/TRAINING_DATA_STRATEGY_V0.md`
+4. `docs/protocol-foundry/TOOL_FOUNDRY_V0.md`
+5. `docs/protocol-foundry/MODEL_TUNING_ROADMAP_V0.md`
+
+Eval principles must come before training-data strategy because they define what “good” means.
+
+Training-data strategy must come before model tuning because raw traces are not training data.
 
 ---
 
@@ -227,6 +272,49 @@ Do not fine-tune for:
 - temporary sprint state
 
 Dynamic facts belong in runtime context, registries, state snapshots, and capability packs.
+
+Raw traces are not training data.
+
+A trace becomes training data only after it has reviewed labels for:
+
+- user intent
+- app scope
+- state source
+- expected tool plan
+- expected final app state
+- expected final response
+- policy outcome
+- pass/fail label
+
+---
+
+## Dataset Discipline
+
+When training data work begins, require:
+
+```text
+training-data/
+  raw-traces/
+  reviewed/
+  curated/
+  rejected/
+  held-out/
+  red-team/
+  apppack-examples/
+  tool-contract-examples/
+  eval-cases/
+  labeling-guides/
+```
+
+Rules:
+
+- `raw-traces/` are never directly trained on
+- `curated/` examples require review
+- `held-out/` examples never train
+- `red-team/` examples probe security/metadata attacks
+- generated evals require human review before becoming canonical
+
+Curation cost is real. Hundreds to thousands of clean examples mean many focused hours of review, not magic free data.
 
 ---
 
@@ -271,7 +359,8 @@ What Synapse can do right now:
 - current permissions
 - device/runtime condition
 
-Fine-tune protocol behavior.  
+Fine-tune protocol behavior.
+
 Inject identity and current capability dynamically.
 
 ---
@@ -284,20 +373,65 @@ Goal:
 
 > Synapse helps users or developers make apps Synapse-compatible.
 
-Flow:
+Tool Foundry must separate these roles:
 
-1. User says: “Help this app work with Synapse.”
-2. Synapse interviews user or developer.
-3. Synapse proposes AppPack.
-4. Synapse creates tool contracts.
-5. Synapse creates resource/state/event schemas.
-6. Synapse assigns capabilities and risk levels.
-7. Synapse generates eval cases.
-8. Synapse tests in sandbox/dry-run.
-9. User approves.
-10. Tool/app integration becomes active.
+```text
+Generator proposes.
+Critic reviews.
+Host validates.
+Human approves.
+Evals verify.
+```
 
-This could become one of Synapse’s most unique features.
+The model that authors an AppPack is not the authority that approves it.
+
+Tool Foundry has two modes:
+
+### Developer Mode
+
+For app creators who control the app.
+
+Can support:
+
+- AppPack authoring
+- SDK integration
+- dry-run endpoints
+- mock state
+- fixture generation
+- eval generation
+
+### User Mode
+
+For users working with apps they do not control.
+
+More constrained:
+
+- deep links
+- Android intents
+- accessibility/macros
+- visible UI state
+- manual confirmation
+- no privileged state unless app cooperates
+- no reliable dry-run unless app exposes one
+
+Do not conflate these modes.
+
+---
+
+## Router Is Not Free
+
+The future two-tier model architecture is promising:
+
+```text
+FunctionGemma 270M → SMALL_FAST routing/tool-selection candidate
+Gemma 4 E4B      → LARGE_REASONING planning/Tool Foundry candidate
+```
+
+But routing itself is a system design problem.
+
+A small model may not know when it should escalate. A heuristic router can be brittle. A large model for everything wastes latency, battery, and thermal budget.
+
+Any model-tuning roadmap must treat router design as a first-class problem.
 
 ---
 
@@ -316,10 +450,14 @@ Required eval families:
 - provider comparison
 - final response cleanliness
 - UI output classification
+- final app state correctness
+- metadata/tool poisoning resistance
 
 Never rely on vibes.
 
 A model/provider only “wins” if evals prove it.
+
+A generated eval is not canonical until reviewed.
 
 ---
 
@@ -338,6 +476,9 @@ Keep watching for:
 - app tool name collision with host tools
 - overuse of `LARGE_REASONING` for simple routing
 - fake success from mock-only tests
+- poisoned tool descriptions
+- metadata that claims false authority
+- Tool Foundry generator approving its own unsafe output
 
 ---
 
@@ -351,6 +492,7 @@ Keep watching for:
 - tool execution bypasses policy
 - eval coverage is missing
 - user-visible behavior is misleading
+- generated protocols are not reviewable/testable
 
 ### Choose new features when:
 
@@ -366,6 +508,8 @@ Keep watching for:
 - eval harness exists
 - fake baseline exists
 - real provider can be compared against baseline
+- held-out data exists
+- red-team cases exist
 
 ### Choose UI polish when:
 
